@@ -1,47 +1,39 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-
 #include "stb_image.h"
 
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
-#include <iostream>
 #include "shader.h"
+#include "camera.h"
 
+#include <iostream>
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
+
+
 void calculateAspectRatio();
 
 
 // settings
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
-
 float screenWidth = SCR_WIDTH;
 float screenHeight = SCR_HEIGHT;
-float aspectRatio = 1.0f;
-
-
-glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
-glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
-glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 
 float deltaTime = 0.0f;	// Time between current frame and last frame
 float lastFrame = 0.0f; // Time of last frame
 
-float yaw = -90.0f;
-float pitch = 0.0f;
-
-float fov = 45.0f;
-
-float lastX = 400, lastY = 300;
+float lastX = (screenWidth / 2), lastY = (screenHeight / 2);
 bool firstMouse = true;
+
+Camera mainCamera;
 
 int main()
 {
@@ -77,6 +69,8 @@ int main()
 
     // Initialization
 
+    
+    mainCamera = Camera(glm::vec3(0.0f, 0.0f, 3.0f));
 
     Shader ourShader("shader.vert", "shader.frag");
 
@@ -218,15 +212,6 @@ int main()
         glm::vec3(-1.3f,  1.0f, -1.5f)
     };
 
-
-    glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
-    glm::vec3 cameraDirection = glm::normalize(cameraPos - cameraTarget);
-    glm::vec3 cameraRight = glm::normalize(glm::cross(cameraUp, cameraDirection));
-    glm::vec3 cameraUP = glm::normalize(glm::cross(cameraDirection, cameraRight));
-
-
-
-
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -256,21 +241,12 @@ int main()
         ourShader.use();
 
 
-
-        glm::vec3 direction;
-        direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-        direction.y = sin(glm::radians(pitch));
-        direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-        cameraFront = glm::normalize(direction);
-
-
         glm::mat4 view = glm::mat4(1.0f);
-        view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        view = mainCamera.GetViewMatrix();
 
-        calculateAspectRatio();
 
         glm::mat4 projection;
-        projection = glm::perspective(glm::radians(fov), aspectRatio, 0.1f, 100.0f);
+        projection = glm::perspective(glm::radians(mainCamera.Zoom), mainCamera.GetAspectRatio(screenWidth, screenHeight), 0.1f, 100.0f);
 
 
        /* unsigned int modelLoc = glGetUniformLocation(ourShader.ID, "model");
@@ -312,15 +288,6 @@ int main()
 }
 
 
-void calculateAspectRatio()
-{
-    if (screenWidth > screenHeight)
-        aspectRatio = screenWidth / screenHeight;
-    if (screenHeight > screenWidth)
-        aspectRatio = screenHeight / screenWidth;
-}
-
-
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
 // ---------------------------------------------------------------------------------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -330,8 +297,6 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     glViewport(0, 0, width, height);
     screenWidth = float(width);
     screenHeight = float(height);
-
-    calculateAspectRatio();
 }
 
 
@@ -339,21 +304,22 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 // ---------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow* window)
 {
-    const float cameraSpeed = 2.5f * deltaTime;
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
+
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        cameraPos += cameraSpeed * cameraFront;
+        mainCamera.ProcessKeyboard(FORWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        cameraPos -= cameraSpeed * cameraFront;
+        mainCamera.ProcessKeyboard(BACKWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+        mainCamera.ProcessKeyboard(RIGHT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+        mainCamera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
-        cameraPos -= cameraSpeed * cameraUp;
+        mainCamera.ProcessKeyboard(UP, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
-        cameraPos += cameraSpeed * cameraUp;
+        mainCamera.ProcessKeyboard(DOWN, deltaTime);
+
 }
 
 
@@ -371,30 +337,10 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
     lastX = float(xpos);
     lastY = float(ypos);
 
-    float sensitivity = 0.1f;
-    xoffset *= sensitivity;
-    yoffset *= sensitivity;
-
-    yaw += xoffset;
-    pitch += yoffset;
-
-    if (pitch > 89.0f)
-        pitch = 89.0f;
-    if (pitch < -89.0f)
-        pitch = -89.0f;
-
-    glm::vec3 direction;
-    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    direction.y = sin(glm::radians(pitch));
-    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    cameraFront = glm::normalize(direction);
+    mainCamera.ProcessMouseMovement(xoffset, yoffset);
 }
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
-    fov -= (float)yoffset;
-    if (fov < 1.0f)
-        fov = 1.0f;
-    if (fov > 45.0f)
-        fov = 45.0f;
+    mainCamera.ProcessMouseScroll((float)yoffset);
 }
